@@ -26,7 +26,25 @@ app.use(function (req, res, next) {
     next();
 });
 
-
+app.get('/deals', (req, res) => {
+    const sql = 'SELECT * FROM food_items';
+    
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ 
+                status: 500,
+                message: 'Database error',
+                error: err.message
+            });
+        }
+        
+        res.status(200).json({
+            status: 200,
+            data: results
+        });
+    });
+});
 
 app.use('/quick_deals/autenticate', autenticationRoute);
 
