@@ -1,91 +1,63 @@
-import express from "express";
-const app = express();
-
 import Jwt from 'jsonwebtoken';
-const { jwt } = Jwt;
+import bcrypt from 'bcrypt';
+import { loginMdl, createUserMdl, updateUserConditionMdl } from '../models/authModel.js';
 
-import { loginMdl } from '../models/authModel.js'
-import { createUserMdl, updateUserConditionMdl } from '../models/authModel.js';
+export const LoginAppCtrl = async (req, res) => {
+    const { userEmail, Password } = req.body;
+    try {
+        loginMdl({ userEmail }, async (err, results) => {
+            if (err) return res.status(400).json({ status: 400, message: "Request failed" });
 
-
-export const LoginAppCtrl = function (req, res) {
-    var data = req.body;
-        loginMdl(data, function (err, results) {
-            try {
-                if (err) {
-                    res.send({ status: 400, message: "Not able to process the request, please try again" });
-                    return;
-                }
-                // console.log(results.length);
-                if (results.length <= 0) {
-                    res.send({ status: 404, message: "Email/Mobile number not exist" });
-                } else if (results.length > 0) {
-                    // console.log(req.body.Password)
-                    const validPass = (
-                        req.body.Password == results[0].password
-                    )
-                   
-                    if (validPass) {
-                      
-                        var SecretKey = process.env.SecretKey
-                      
-                        let payload = {
-                            subject: req.body.userEmail
-                        };
-                        let token = Jwt.sign(payload, SecretKey, { expiresIn: "3h" });
-
-                        res.send({
-                            status: 200, message: "login Successful", results, token: token
-                        });
-                        // }
-                    } else {
-                        res.send({ status: 400, message: "Invalid password" })
-                    }
-                }
-            } catch (err) {
-                res.send({ status: 500, message: "Internal server error" })
+            if (results.length === 0) {
+                return res.status(404).json({ status: 404, message: "User not found" });
             }
+
+            const user = results[0];
+            const isMatch = await bcrypt.compare(Password, user.password);
+            if (!isMatch) {
+                return res.status(401).json({ status: 401, message: "Invalid password" });
+            }
+
+            const token = Jwt.sign({ subject: user.email }, process.env.SecretKey, { expiresIn: '3h' });
+
+            return res.status(200).json({ status: 200, message: "Login successful", results: user, token });
         });
+    } catch (err) {
+        return res.status(500).json({ status: 500, message: "Internal server error", error: err.message });
+    }
 };
 
+export const createUserCtrl = async (req, res) => {
+    try {
+        const userData = req.body;
+        userData.password = await bcrypt.hash(userData.password, 10);
 
-
-export const createUserCtrl = (req, res) => {
-    const userData = req.body;
-
-    createUserMdl(userData, (err, results) => {
-        if (err) {
-            if (err.message === "Email already exists") {
-                res.status(400).json({ status: 400, message: "Email already exists" });
-            } else if (err.message === "Username already exists") {
-                res.status(400).json({ status: 400, message: "Username already exists" });
-            } else {
-                res.status(500).json({ status: 500, message: "Internal server error" });
+        createUserMdl(userData, (err, results) => {
+            if (err) {
+                const message = err.message.includes("Email") ? "Email already exists" :
+                                err.message.includes("Username") ? "Username already exists" :
+                                "Internal server error";
+                const status = message.includes("already exists") ? 400 : 500;
+                return res.status(status).json({ status, message });
             }
-        } else {
             res.status(201).json({ status: 201, message: "User registered successfully" });
-        }
-    });
+        });
+    } catch (err) {
+        res.status(500).json({ status: 500, message: "Server error", error: err.message });
+    }
 };
-
 
 export const updateUserConditionCtrl = (req, res) => {
-    const { user_id, condition } = req.body; // Extract user_id and condition from the request body
+    const { user_id, condition } = req.body;
 
     if (!user_id || !condition) {
         return res.status(400).json({ status: 400, message: "User ID and condition are required" });
     }
 
-    const userData = {
-        userId: user_id,
-        condition
-    };
+    const userData = { userId: user_id, condition };
 
-    updateUserConditionMdl(userData, (err, results) => {
-        if (err) {
-            res.status(500).json({ status: 500, message: "Internal server error" });
-        } else {
-            res.status(200).json({ status: 200, message: "User condition updated successfully" });
-        }
+    updateUserConditionMdl(userData, (err) => {
+        if (err) return res.status(500).json({ status: 500, message: "Internal server error" });
+        res.status(200).json({ status: 200, message: "User condition updated successfully" });
     });
 };

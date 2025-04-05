@@ -5,5 +5,5 @@ export const db = mysql.createPool({
     host: 'localhost',
     user: 'root',
     password: 'H@cker22',
-    database: 'quick_Deals'
+    database: 'quick_deals'
 })
