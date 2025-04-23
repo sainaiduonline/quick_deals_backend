@@ -1,4 +1,6 @@
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import cors from 'cors';
@@ -10,6 +12,13 @@ dotenv.config();
 
 const app = express();
 
+// Compute __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve the uploads folder
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Global Middlewares
 app.use(cors());
 app.use(express.json());
@@ -20,36 +29,33 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Configure Multer for File Uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Ensure the "uploads" folder exists in your project root
-    cb(null, 'uploads/');
+    cb(null, path.join(__dirname, 'uploads'));
   },
   filename: (req, file, cb) => {
-    // Create a unique file name using the field name, timestamp, and a random number.
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const extension = file.originalname.split('.').pop();
     cb(null, file.fieldname + '-' + uniqueSuffix + '.' + extension);
   }
 });
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
-// CORS Headers
+// CORS Headers for preflight
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header(
     'Access-Control-Allow-Headers',
     'Origin, X-Requested-With, Content-Type, Accept, Authorization'
   );
-
   if (req.method === 'OPTIONS') {
-    res.header('Access-Control-Allow-Methods', 'PUT, POST, PATCH, GET, DELETE');
-    return res.status(200).json({});
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH');
+    return res.sendStatus(200);
   }
   next();
 });
 
 // Health check
 app.get('/', (req, res) => {
-  res.status(200).json({ message: "Quick Deals API is running 🚀" });
+  res.json({ message: 'Quick Deals API is running 🚀' });
 });
 
 // Deals endpoint: GET all deals
