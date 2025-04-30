@@ -387,6 +387,170 @@ app.get('/contacts', (req, res) => {
   });
 });
 
+
+// GET reviews for a deal
+app.get('/deals/:id/reviews', (req, res) => {
+  const dealId = db.escape(req.params.id);
+  const sql = `
+    SELECT r.review_id, r.rating, r.comment, r.created_at,
+           u.user_name
+    FROM reviews r
+    JOIN user u ON u.user_id = r.user_id
+    WHERE r.food_id = ${dealId}
+    ORDER BY r.created_at DESC
+  `;
+  db.query(sql, (err, rows) => {
+    if (err) return res.status(500).json({ status:500, message:err.message });
+    res.json({ status:200, data: rows });
+  });
+});
+
+// POST a new review
+app.post('/deals/:id/reviews', (req, res) => {
+  const dealId = parseInt(req.params.id,10);
+  const { user_id, rating, comment } = req.body;
+  if (!user_id||!rating||!comment) {
+    return res.status(400).json({ status:400, message:'Missing fields' });
+  }
+  const sql = `INSERT INTO reviews (food_id,user_id,rating,comment) VALUES (?,?,?,?)`;
+  db.query(sql, [dealId,user_id,rating,comment], (err, result) => {
+    if (err) return res.status(500).json({ status:500, message:err.message });
+    res.status(201).json({ status:201, message:'Review added', review_id: result.insertId });
+  });
+});
+
+// Create a new review
+// POST /reviews
+// body: { user_id, food_id, rating (1–5), comment (optional) }
+app.post('/reviews', (req, res) => {
+  const { user_id, food_id, rating, comment } = req.body;
+  if (!user_id || !food_id || !rating) {
+    return res.status(400).json({ status: 400, message: 'user_id, food_id & rating are required' });
+  }
+  const sql = `
+    INSERT INTO reviews (user_id, food_id, rating, comment)
+    VALUES (?, ?, ?, ?)
+  `;
+  db.query(sql, [user_id, food_id, rating, comment || null], (err, result) => {
+    if (err) {
+      console.error('Error creating review:', err);
+      return res.status(500).json({ status: 500, message: 'Error creating review', error: err.message });
+    }
+    res.status(201).json({
+      status: 201,
+      message: 'Review created',
+      review_id: result.insertId
+    });
+  });
+});
+
+// Get all reviews for a given food item
+// GET /reviews/:foodId
+app.get('/reviews/:foodId', (req, res) => {
+  const foodId = req.params.foodId;
+  const sql = `
+    SELECT r.review_id,
+           r.user_id,
+           u.user_name,
+           r.rating,
+           r.comment,
+           r.created_at
+    FROM reviews r
+    JOIN user u ON u.user_id = r.user_id
+    WHERE r.food_id = ?
+    ORDER BY r.created_at DESC
+  `;
+  db.query(sql, [foodId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching reviews:', err);
+      return res.status(500).json({ status: 500, message: 'Error fetching reviews', error: err.message });
+    }
+    res.json({
+      status: 200,
+      data: rows
+    });
+  });
+});
+
+// Get aggregated rating info for a food item
+// GET /ratings/:foodId
+app.get('/ratings/:foodId', (req, res) => {
+  const foodId = req.params.foodId;
+  const sql = `
+    SELECT review_count, avg_rating
+    FROM food_ratings
+    WHERE food_id = ?
+  `;
+  db.query(sql, [foodId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching rating summary:', err);
+      return res.status(500).json({ status: 500, message: 'Error fetching ratings', error: err.message });
+    }
+    if (!rows.length) {
+      return res.json({ status: 200, data: { review_count: 0, avg_rating: null } });
+    }
+    res.json({ status: 200, data: rows[0] });
+  });
+});
+
+// Update an existing review
+// PUT /reviews/:reviewId
+// body may include { rating, comment }
+app.put('/reviews/:reviewId', (req, res) => {
+  const reviewId = req.params.reviewId;
+  const { rating, comment } = req.body;
+  if (!rating && comment === undefined) {
+    return res.status(400).json({ status: 400, message: 'Nothing to update' });
+  }
+  const updates = [];
+  const params  = [];
+  if (rating !== undefined) {
+    updates.push('rating = ?');
+    params.push(rating);
+  }
+  if (comment !== undefined) {
+    updates.push('comment = ?');
+    params.push(comment);
+  }
+  // always update timestamp
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+
+  const sql = `
+    UPDATE reviews
+    SET ${updates.join(', ')}
+    WHERE review_id = ?
+  `;
+  params.push(reviewId);
+
+  db.query(sql, params, (err, result) => {
+    if (err) {
+      console.error('Error updating review:', err);
+      return res.status(500).json({ status: 500, message: 'Error updating review', error: err.message });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ status: 404, message: 'Review not found' });
+    }
+    res.json({ status: 200, message: 'Review updated' });
+  });
+});
+
+// Delete a review
+// DELETE /reviews/:reviewId
+app.delete('/reviews/:reviewId', (req, res) => {
+  const reviewId = req.params.reviewId;
+  const sql = 'DELETE FROM reviews WHERE review_id = ?';
+  db.query(sql, [reviewId], (err, result) => {
+    if (err) {
+      console.error('Error deleting review:', err);
+      return res.status(500).json({ status: 500, message: 'Error deleting review', error: err.message });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ status: 404, message: 'Review not found' });
+    }
+    res.json({ status: 200, message: 'Review deleted' });
+  });
+});
+
 // Auth routes
 app.use('/quick_deals/authenticate', authRoutes);
 
